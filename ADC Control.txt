@@ -1,0 +1,118 @@
+{Project Apollo AnalogIn Program}
+CON
+        _clkmode = xtal1 + pll16x                                               'Standard clock mode * crystal frequency = 80 MHz
+        _xinfreq = 5_000_000
+VAR
+        long  total
+PUB Main
+        cognew(@Analog, @total) 
+        cognew(@Shift, @total)
+DAT
+        org 0
+        
+Analog  mov             dira, #$B0
+        mov             iterA, #0
+        mov             iterB, #0
+        'mov             addr, #0
+        or              outa, #$80
+        mov             time, cnt
+        add             time, delay
+        waitcnt         time, delay
+        andn            outa, #$80
+        
+Init    or              outa, #$10
+        nop
+        andn            outa,  #$10
+        cmp             iterA, #10  wz
+        if_z            or  outa, #$80
+        if_z            jmp  #Begin
+        add             iterA, #1
+        jmp             #Init
+        
+Begin   waitpeq         eoc, eoc                'wait for EOC to go high
+        andn            outa, #$80              'bring CS low
+        mov             time, cnt               'delay
+        add             time, delay             'delay
+        waitcnt         time, delay             'delay
+        mov             iterB, #0
+        mov             addrS, addr              'move address to shift variable 
+        
+Mini    mov             dataM, #$40             'reset dataM
+        mov             mask, #$8               'reset Mask      
+        and             mask, addrS             'grab MSB of address  
+        shl             mask, #2                'shift MSB of address to addr output pin
+        or              outa, mask              'display MSB of address to output pin
+        or              outa, #$10              'clk high
+        and             dataM, ina              'data bit put into dataM
+        sar             dataM, #6               'dataM shifted to zero bit to be moved into value
+        xor             outa,  #$10             'clk low
+        xor             outa,  mask             'bring address pin back low
+        cmp             addr, #0  wz
+        if_z            or  valueA, dataM           'moves dataM bit to LSB of valueA
+        if_z            shl  valueA, #1              'shift valueA left to make room for next LSB
+        shl             addrS, #1 
+        cmp             iterB, #10  wz
+        if_z            jmp  #Inc
+        add             iterB, #1
+        jmp             #Mini             
+
+Inc     or              outa, #$80
+        'cmp             addr, #11  wz
+        'if_z            mov  addr, #0
+        sar             valueA, #1
+        wrlong          valueA, par
+        jmp             #Begin    
+
+
+
+valueA  long 0
+valueB  long 0
+valueC  long 0
+valueD  long 0
+valueE  long 0
+valueF  long 0
+valueG  long 0
+valueH  long 0
+valueI  long 0
+valueJ  long 0
+valueK  long 0
+
+mask    long $8
+addr    long 0
+delay   long 250
+eoc     long $8
+
+dataM   res 1        
+addrS   res 1
+time    res 1
+iterA   res 1
+iterB   res 1
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+        org 0
+        
+Shift   mov             dira, #$7
+        rdlong          save, par     'injector input value
+        mov             iterC, #0
+         
+Loop    mov             maskA, #$1
+        and             maskA, save
+        xor             outa, maskA
+        xor             outa, #$2
+        nop
+        xor             outa, #$2
+        and             outa, #$0
+        sar             save, #1
+        add             iterC, #1
+        cmp             iterC, #8  wz
+        if_z            jmp #Latch
+        jmp             #Loop
+        
+Latch   xor             outa, #$4
+        nop
+        xor             outa, #$4
+        jmp             #Shift
+        
+iterC         res 1
+save          res 1
+maskA         res 1       

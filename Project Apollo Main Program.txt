@@ -1,0 +1,689 @@
+{Project Apollo Main Program}
+CON
+        _clkmode = xtal1 + pll16x                                               'Standard clock mode * crystal frequency = 80 MHz
+        _xinfreq = 5_000_000
+VAR
+        long  RPM, fuelPulse, ignitionDelay, ignitionDwell, map, mat, ect, tps, volEff, manPW, manAdv, manDwell
+PUB Main
+        'Need to figure out proper data values, etc!
+        'All codes in order as typed in DAT section
+        'Need to add code to account for a manual input (PW, Dwell, Advance, etc.) toggle switch
+        'See manual for complete description of each section of code
+        'Will need to add code that allows Ignition and Injector control to read toggle switch for manual inputs
+        'To prevent incorrect manual inputs, toggle switch will be added to allow change of manual controls
+        'Will use one of the digital inputs for toggle switch and one analog input for override select
+        cognew(@Memory, @manAdv)                        'Memory Interfacing Program 
+        cognew(@Reset, @RPM)                            'RPM Calculation
+        cognew(@Listen, @manPW)                         'Injector Control
+        cognew(@ListenC, @ignitionDelay)                'Ignition Control
+        cognew(@Analog, @map)                           'ADC Control
+        cognew(@Trigg, 0)                               'Trigger Signal Generation
+DAT
+
+''''''''''''''''''''\/Memory Interface\/'''''''''''''''''''''''''''
+        org 0
+        
+Memory  mov             dira, cont
+        mov             reason, #0
+        or              outa, cs
+        mov             iterL, #0     
+        mov             timeX, cnt
+        add             timeX, delayX
+        waitcnt         timeX, delayX
+        xor             outa, cs
+        mov             rpmInt, #$7
+        mov             mapInt, #$7
+        mov             matInt, #$7
+      
+ignGet  mov             reason, #1              'this section gets RPM and MAP data from main RAM in 
+        mov             addA, par           'order to send an address to EEPROM to get ignition 
+        rdlong          advA, addA          'advance data
+        sub             addA, #40
+        rdlong          rpmA, addA
+        and             rpmA, #$FF    
+        shl             advA, #8                'shifts advance variable left 7 to make room for rpm variable
+        mov             tempsA, #0
+        mov             tempsA, advA
+        add             tempsA, rpmA        
+        jmp             #Inst
+        
+ignRet  mov             ignA, datC              'ignA is 8 least significant bits of 16 bit number
+        mov             ignB, datD              'ignB is 8 most significant bits of 16 bit delay number
+        shl             ignB, #8
+        add             ignA, ignB              'compiles two halves of delay number into one 16 bit number
+        add             addA, #8               'sets up the proper address for the ignition delay variable in the main RAM
+        cmp             minRPM, rpmA  wz       'less than 538RPM
+        if_z            mov  ignA, two
+        jmp             #Memory
+'fuelGet mov             reason, #2
+'        mov             addA, par
+'        add             addA, #32
+'        rdlong          pwA, addA
+        
+'fuelRet sub             addA, #32
+'        shl             pwA, #1                 'gives pulsewidth value greater range, sacrifices resolution (not an issue)
+'        wrlong          pwA, addA               'moves new pulsewidth value to main RAM to be accessed by other code                              
+'        jmp             #Memory 
+
+Inst    or              outa, sck
+        nop
+        xor             outa, sck
+        add             iterL, #1
+        cmp             iterL, #6  wz
+        if_z            jmp  #InstA
+        jmp             #Inst
+
+InstA   or              outa, adr
+        or              outa, sck
+        nop
+        xor             outa, sck
+        add             iterL, #1
+        cmp             iterL, #8  wz
+        if_z            xor  outa, adr    
+        if_z            jmp  #AddrA
+        jmp             #InstA
+        
+AddrA   mov             mover, anotherlol
+        and             mover, tempsA
+        shl             mover, #3
+        or              outA, mover
+        nop
+        or              outa, sck
+        nop
+        xor             outa, sck
+        shl             tempsA, #1  
+        xor             outa, mover
+        add             iterL, #1
+        cmp             iterL, #24  wz   
+        if_z            jmp  #DataIn
+        jmp             #AddrA
+        
+DataIn  mov             datS, datIn             'ignA
+        mov             datV, datInB            'ignB
+        or              outa, sck
+        and             datS, ina               'ignA
+        and             datV, ina               'ignB
+        xor             outa, sck
+        or              datC, datS              'ignA
+        or              datD, datV              'datV is the variable used for ignB EEPROM and data EEPROM
+        shl             datD, #1
+        shl             datC, #1
+        add             iterL, #1
+        cmp             iterL, #32  wz
+        if_z            jmp  #Concl
+        jmp             #DataIn
+
+Concl   shr             datC, #21
+        'rev             datC, #24
+        shr             datD, #22              'moves data around, ADD TO PROGRAM ON DESKTOP
+        'rev             datD, #24
+        cmp             reason, #1  wz
+        'if_z            mov  reason, #0
+        if_z            jmp  #ignRet
+        'cmp             reason, #2  wz
+        'if_z            jmp  #fuelRet
+        jmp             #Memory
+
+testagain     long  $03C8        
+tests         long  $0F
+testlol       long  $004A
+mover         long  $8000
+anotherlol    long  $8000
+adrss         long  $0080
+cont          long  $4C0000
+cs            long  $400000
+adr           long  $40000
+sck           long  $80000
+datIn         long  $100000
+datInB        long  $200000
+delayX        long  250
+minRPM        long  $FF
+
+two           long  $4568
+
+
+tempsB        res 1
+mapInt        res 1
+rpmInt        res 1
+matInt        res 1
+addA          res 1
+timeX         res 1
+datC          res 1
+datD          res 1
+datV          res 1
+datS          res 1
+adTemp        res 1
+tempsA        res 1
+iterL         res 1
+pwA           res 1
+delA          res 1
+ignA          res 1
+ignB          res 1
+ignDel        res 1
+ignDwl        res 1
+fuelPW        res 1
+rpmA          res 1
+mapA          res 1
+matA          res 1
+advA          res 1
+send          res 1
+reason        res 1
+
+''''''''''''''''''\/RPM Calculation\/''''''''''''''''''''
+        org 0
+        
+Reset   mov             dira, runner
+        'or              outa, runner
+        mov             cmpA, checkA
+        mov             cmpB, checkB
+        
+Revs    and             cmpA, ina
+        cmp             cmpA, checkA  wz
+        if_z            mov  revStart, cnt
+        and             cmpB, ina
+        cmp             cmpB, checkB  wz
+        if_z            mov  revEnd, cnt
+        if_z            jmp  #CalcRev
+        jmp             #Reset
+        
+CalcRev 
+        sub             revEnd, revStart
+        abs             revCnt, revEnd
+        sar             revCnt, #16             'Turns into 8-bit number
+        cmp             minA, revCnt  wc
+        if_c            mov  revCnt, minA
+        if_c            and  outa, #0
+        if_nc           or  outa, runner
+        wrlong          revCnt, par
+        jmp             #Reset
+        
+cmpA          long  $2000
+cmpB          long  $4000
+checkA        long  $2000
+checkB        long  $4000
+runner        long  $1000000
+minA          long  $FF
+
+revStart      res 1
+revEnd        res 1
+revCnt        res 1
+
+
+''''''''''''''\/injector control\/''''''''''''''''''
+        org 0
+
+Listen  mov             dira, numberA
+        rdlong          pulsewidth, par
+        shl             pulsewidth, #1
+        and             startToggle, ina          'checking status of start LED control pin to determine start/run mode
+        cmp             startToggle, #0  wz
+        if_z            mov  pulsewidth, startPulse  'if start mode, set pulsewidth to (startPulse*.00644) mS
+        mov             inputs, reader
+        and             inputs, ina
+        sar             inputs, #8
+        cmp             inputs, #$3 wz 
+        if_z            jmp  #Condn
+        cmp             inputs, #$1 wz
+        if_z            jmp  #Trigger
+        cmp             injector, #$1  wz
+        if_z            jmp  #Check  
+        jmp             #Check
+        
+Condn   mov             injector, #$1
+        or              injectorOut, injector
+        mov             timeA, iterC
+        add             timeA, pulsewidth
+        jmp             #Shift
+        
+Trigger shl             injector, #1
+        waitpne         ant, #$100
+        cmp             injector, #$2 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeB, iterC
+        if_z            add  timeB, pulsewidth  
+        cmp             injector, #$4 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeC, iterC
+        if_z            add  timeC, pulsewidth
+        cmp             injector, #$8 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeD, iterC
+        if_z            add  timeD, pulsewidth 
+        cmp             injector, #$10 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeE, iterC
+        if_z            add  timeE, pulsewidth   
+        cmp             injector, #$20 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeF, iterC
+        if_z            add  timeF, pulsewidth 
+        cmp             injector, #$40 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeG, iterC
+        if_z            add  timeG, pulsewidth 
+        cmp             injector, #$80 wz
+        if_z            or  injectorOut, injector
+        if_z            mov  timeH, iterC
+        if_z            add  timeH, pulsewidth
+        jmp             #Shift
+
+Check   mov             count, iterC
+        cmp             count, timeA  wc, wz
+        if_nc_or_z      andn  injectorOut, #$1
+        cmp             count, timeB  wc, wz
+        if_nc_or_z      andn  injectorOut, #$2
+        cmp             count, timeC  wc, wz
+        if_nc_or_z      andn  injectorOut, #$4
+        cmp             count, timeD  wc, wz
+        if_nc_or_z      andn  injectorOut, #$8
+        cmp             count, timeE  wc, wz
+        if_nc_or_z      andn  injectorOut, #$10
+        cmp             count, timeF  wc, wz
+        if_nc_or_z      andn  injectorOut, #$20
+        cmp             count, timeG  wc, wz
+        if_nc_or_z      andn  injectorOut, #$40
+        cmp             count, timeH  wc, wz
+        if_nc_or_z      andn  injectorOut, #$80
+        jmp             #Shift
+
+Shift   mov             save, injectorOut     'injector input value
+        mov             iterA, #0
+        
+Loop    mov             mask, #$1
+        and             mask, save
+        shl             mask, #25
+        xor             outa, mask
+        xor             outa, numberB               'clock high
+        nop
+        xor             outa, numberB               'clock low
+        and             outa, #$0
+        sar             save, #1
+        add             iterA, #1
+        cmp             iterA, #8  wz
+        if_z            jmp #Latch
+        jmp             #Loop
+        
+Latch   xor             outa, numberC               'latch high
+        nop
+        xor             outa, numberC               'latch low
+        add             iterC, #1
+        jmp             #Listen
+        
+injector      long  0
+reader        long  $300
+injectorOut   byte  0
+pulsewidth    long  1000  'Pulsewidth output = pulsewidth variable # *6.44 / 1000 (mS) 
+iterC         long  0
+ant           long  $100
+numberA       long  $E000000
+numberB       long  $8000000
+numberC       long  $4000000
+
+startToggle   long  $1000000
+startCheck    long  $1000000
+startPulse    long  5000  'Cranking fuel injector pulsewidth (32.2 mS)
+
+timeA         res 1
+timeB         res 1
+timeC         res 1
+timeD         res 1
+timeE         res 1
+timeF         res 1
+timeG         res 1
+timeH         res 1
+
+count         res 1
+inputs        res 1
+iterA         res 1
+save          res 1
+mask          res 1
+
+''''''''''''''\/ coil control program \/''''''''''''''''''''''''''''''''''
+        org 0
+
+ListenC mov             dira, numberD
+        mov             addressB, par            
+        rdlong          advance, addressB       'moves ignition delay value from main RAM into advance variable for code delay
+        add             addressB, #36
+        rdlong          dwell, addressB         'moves coil dwell value from main RAM into dwell variable
+        sar             dwell, #1
+        sub             advance, dwell          'subtracts dwell time from main delay time, gives true delay from trigger to coil charge
+        sub             advance, factor           'factor
+        mov             input, readerA
+        and             input, ina
+        sar             input, #8
+        cmp             input, #$3 wz 
+        if_z            jmp  #Cond
+        cmp             input, #$1 wz
+        if_z            jmp  #Trig   
+        jmp             #Checker
+        
+Cond    mov             coil, #$1
+        mov             delayA, iterD
+        add             delayA, advance
+        jmp             #ShiftA
+        
+Trig    shl             coil, #1
+        waitpne         sugar, #$100   'wait for trigger pin to go low
+        cmp             coil, #$2 wz       
+        if_z            mov  delayB, iterD
+        if_z            add  delayB, advance
+        cmp             coil, #$4 wz       
+        if_z            mov  delayC, iterD
+        if_z            add  delayC, advance
+        cmp             coil, #$8 wz       
+        if_z            mov  delayD, iterD
+        if_z            add  delayD, advance
+        cmp             coil, #$10 wz       
+        if_z            mov  delayE, iterD
+        if_z            add  delayE, advance
+        cmp             coil, #$20 wz       
+        if_z            mov  delayF, iterD
+        if_z            add  delayF, advance
+        cmp             coil, #$40 wz       
+        if_z            mov  delayG, iterD
+        if_z            add  delayG, advance
+        cmp             coil, #$80 wz       
+        if_z            mov  delayH, iterD
+        if_z            add  delayH, advance
+        jmp             #ShiftA
+        
+Checker mov             number, iterD
+        cmp             number, delayA  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$1
+        if_z            mov  dwellA, iterD
+        if_z            add  dwellA, dwell
+        cmp             number, delayB  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$2
+        if_z            mov  dwellB, iterD
+        if_z            add  dwellB, dwell
+        cmp             number, delayC  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$4
+        if_z            mov  dwellC, iterD
+        if_z            add  dwellC, dwell
+        cmp             number, delayD  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$8
+        if_z            mov  dwellD, iterD
+        if_z            add  dwellD, dwell
+        cmp             number, delayE  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$10
+        if_z            mov  dwellE, iterD
+        if_z            add  dwellE, dwell
+        cmp             number, delayF  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$20
+        if_z            mov  dwellF, iterD
+        if_z            add  dwellF, dwell
+        cmp             number, delayG  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$40
+        if_z            mov  dwellG, iterD
+        if_z            add  dwellG, dwell
+        cmp             number, delayH  wz     'check if count is greater than or equal to timeA
+        if_z            or  coilOut, #$80
+        if_z            mov  dwellH, iterD
+        if_z            add  dwellH, dwell
+        
+End     cmp             number, dwellA  wz
+        if_z            andn  coilOut, #$1
+        cmp             number, dwellB  wz
+        if_z            andn  coilOut, #$2
+        cmp             number, dwellC  wz
+        if_z            andn  coilOut, #$4
+        cmp             number, dwellD  wz
+        if_z            andn  coilOut, #$8
+        cmp             number, dwellE  wz
+        if_z            andn  coilOut, #$10
+        cmp             number, dwellF  wz
+        if_z            andn  coilOut, #$20
+        cmp             number, dwellG  wz
+        if_z            andn  coilOut, #$40
+        cmp             number, dwellH  wz
+        if_z            andn  coilOut, #$80
+
+
+ShiftA  mov             mem, coilOut     'coil output value
+        mov             iterE, #0
+        
+LoopA   mov             maskA, #$1
+        and             maskA, mem
+        shl             maskA, #15
+        xor             outa, maskA      'data high
+        xor             outa, numberE        'clock high
+        nop
+        xor             outa, numberE        'clock loq
+        and             outa, #$0
+        sar             mem, #1
+        add             iterE, #1
+        cmp             iterE, #8  wz
+        if_z            jmp #LatchA
+        jmp             #LoopA
+        
+LatchA  xor             outa, numberF        'latch high
+        nop
+        xor             outa, numberF        'latch low
+        add             iterD, #1
+        jmp             #ListenC
+        
+coil          long  0
+readerA       long  $300
+coilOut       long  0
+advance       long  968  'mS delay = advance/124.378
+dwell         long  600   'mS dwell = dwell/123.762
+iterD         long  0
+sugar         long  $100
+numberD       long  $38000
+numberE       long  $20000
+numberF       long  $10000
+factor        long  $100
+
+delayA        res 1
+delayB        res 1
+delayC        res 1
+delayD        res 1
+delayE        res 1
+delayF        res 1
+delayG        res 1
+delayH        res 1
+
+dwellA        res 1
+dwellB        res 1
+dwellC        res 1
+dwellD        res 1
+dwellE        res 1
+dwellF        res 1
+dwellG        res 1
+dwellH        res 1
+
+addressB      res 1
+number        res 1
+input         res 1
+iterE         res 1
+mem           res 1
+maskA         res 1
+
+''''''''''''''\/ADC Control Code\/''''''''''''''''''''''''''''''''''''''''
+org 0
+        
+Analog  mov             dira, #$38
+        mov             iterF, #0
+        mov             iterG, #0
+        or              outa, #$20             'bring cs high
+        mov             time, cnt
+        add             time, delay
+        waitcnt         time, delay
+        andn            outa, #$20             'bring cs low
+        
+Init    or              outa, #$8             'bring clock high
+        nop
+        andn            outa,  #$8            'bring clock low
+        cmp             iterF, #10  wz
+        if_z            or  outa, #$20         'bring cs high if at 11th iteration
+        if_z            jmp  #Begin
+        add             iterF, #1
+        jmp             #Init
+        
+Begin   waitpeq         eoc, eoc                'wait for EOC to go high
+        andn            outa, #$20              'bring CS low
+        mov             addressC, par 
+        mov             time, cnt               'delay
+        add             time, delay             'delay
+        waitcnt         time, delay             'delay
+        mov             iterG, #0
+        mov             temp, #$0
+        mov             addrS, addr              'move address to shift variable 
+        
+Mini    mov             dataM, #$40             'reset dataM
+        mov             maskB, #$8               'reset Mask      
+        and             maskB, addrS             'grab MSB of address  
+        shl             maskB, #1                'shift MSB of address to addr output pin
+        or              outa, maskB              'display MSB of address to output pin
+        or              outa, #$8              'clk high
+        and             dataM, ina              'data bit put into dataM
+        sar             dataM, #6               'dataM shifted to zero bit to be moved into value
+        xor             outa,  #$8             'clk low
+        xor             outa,  maskB             'bring address pin back low
+
+        or              temp, dataM             'moves dataM bit to LSB of valueA
+        cmp             iterG, #9  wc                                                   
+        if_c            shl  temp, #1              'shift temp left to make room for next LSB
+        
+        shl             addrS, #1 
+        cmp             iterG, #10  wz
+        if_z            jmp  #Inc
+        add             iterG, #1
+        jmp             #Mini             
+
+Inc     or              outa, #$20
+        cmp             addr, #0  wz
+        if_z            mov  valueK, temp       'Display Selection input value (future)
+        cmp             addr, #1  wz
+        if_z            mov  valueA, temp       'MAT analog value
+        cmp             addr, #2  wz
+        if_z            mov  valueB, temp       'ECT analog value
+        cmp             addr, #3  wz
+        if_z            mov  valueC, temp       'MAP analog value
+        cmp             addr, #4  wz
+        if_z            mov  valueD, temp       'TPS analog value
+        cmp             addr, #5  wz
+        if_z            mov  valueE, temp       'Manual Injector Pulsewidth input value
+        cmp             addr, #6  wz
+        if_z            mov  valueF, temp       'Manual Ignition Advance input value
+        cmp             addr, #7  wz
+        if_z            mov  valueG, temp       'Manual Coil Dwell input value
+        cmp             addr, #8  wz
+        if_z            mov  valueH, temp       'Manual AFR input value (future)
+        cmp             addr, #9  wz
+        if_z            mov  valueI, temp       'Manual Override Selection Switch? AFR, Dwell, IgnAdvance, FuelPulse, AllOverride 
+        cmp             addr, #10  wz
+        if_z            mov  valueJ, temp       'TBD
+        
+        cmp             addr, #10  wz
+        if_z            mov  addr, #0
+        if_z            jmp  #thisOne
+        add             addr, #1
+        jmp             #Begin    
+
+thisOne add             addressC, #20
+        wrlong          valueE, addressC        'this value goes into manual pulsewidth section
+        add             addressC, #4
+        sar             valueF, #5              'Turns advance input value into 5-bit number (0-31 degrees of advance)
+        wrlong          valueF, addressC
+        add             AddressC, #4
+        wrlong          valueG, addressC        'this value is the manual dwell input
+        jmp             #Begin
+
+valueA        long 0
+valueB        long 0
+valueC        long 0
+valueD        long 0
+valueE        long 0
+valueF        long 0
+valueG        long 0
+valueH        long 0
+valueI        long 0
+valueJ        long 0
+valueK        long 0
+
+maskB         long $8
+addr          long 0
+delay         long 250
+another       long 1000
+eoc           long $80
+
+addressC      res 1
+temp          res 1
+waiter        res 1
+dataM         res 1        
+addrS         res 1
+time          res 1
+iterF         res 1
+iterG         res 1
+
+'''''''''''''''''''''\/Triggering Program\/'''''''''''''''''''
+   
+        org 0
+
+Trigg   mov             dira, output
+
+ListenX mov             visual, all
+        and             visual, ina
+        cmp             visual, camsA wz
+        if_z            waitpne  camsA, camsA
+        if_z            jmp  #A
+        cmp             visual, camsB wz
+        if_z            waitpne  camsB, camsB
+        if_z            jmp  #D
+        cmp             visual, crankS wz
+        if_z            waitpne  crankS, crankS
+        if_z            add  tick, #1
+        if_z            jmp  #B
+        jmp             #ListenX 
+
+A       mov             tick, #0
+        xor             outa, output
+        mov             timeY, cnt
+        add             timeY, trigPulse
+        waitcnt         timeY, trigPulse
+        xor             outa, output  
+        jmp             #ListenX
+        
+B       cmp             tick, #12 wz
+        if_z            jmp  #C
+        cmp             tick, #24 wz
+        if_z            jmp  #C 
+        'cmp             tick, #35 wz
+        'if_z            jmp  #ListenX
+        cmp             tick, #48 wz
+        if_z            jmp  #C
+        cmp             tick, #60 wz
+        if_z            jmp  #C   
+        'cmp             tick, #71 wz
+        'if_z            jmp  #ListenX  
+        jmp             #ListenX                                               
+
+C       xor             outa, trigs
+        mov             timeY, cnt
+        add             timeY, trigPulse
+        waitcnt         timeY, trigPulse
+        xor             outa, trigs
+        jmp             #ListenX
+
+D       mov             tick, #36
+        xor             outa, trigs
+        mov             timeY, cnt
+        add             timeY, trigPulse
+        waitcnt         timeY, trigPulse
+        xor             outa, trigs
+        jmp             #ListenX
+
+
+output        long  $300
+trigs         long  $100
+crankS        long  $1000
+camsA         long  $2000     'CMP1
+camsB         long  $4000     'CMP2
+all           long  $7000
+trigPulse     long  1000
+
+tick          res 1
+visual        res 1
+timeY         res 1

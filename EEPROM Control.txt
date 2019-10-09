@@ -1,0 +1,125 @@
+{Project Apollo ShiftOut Program}
+CON
+        _clkmode = xtal1 + pll16x                                               'Standard clock mode * crystal frequency = 80 MHz
+        _xinfreq = 5_000_000
+VAR
+        long  totals
+PUB Main
+        cognew(@Shift, @totals)
+        cognew(@Memory, @totals)       
+DAT
+        org 0
+        
+Memory  mov             dira, cont
+        or              outa, cs
+        mov             iterL, #0
+        mov             adTemp, adrss
+        mov             timeX, cnt
+        add             timeX, delayX
+        waitcnt         timeX, delayX
+        xor             outa, cs
+        
+Inst    nop
+        nop
+        or              outa, sck
+        nop
+        xor             outa, sck
+        add             iterL, #1
+        cmp             iterL, #6  wz
+        if_z            jmp  #InstA
+        jmp             #Inst
+
+InstA   or              outa, adr
+        or              outa, sck
+        nop
+        xor             outa, sck
+        add             iterL, #1
+        cmp             iterL, #8  wz
+        if_z            xor  outa, adr    
+        if_z            jmp  #Addrs
+        jmp             #InstA
+        
+Addrs   mov             tempsA, mover
+        and             tempsA, adTemp
+        shl             tempsA, #3
+        or              outA, tempsA
+        nop
+        or              outa, sck
+        nop
+        xor             outa, sck
+        shl             adTemp, #1  
+        xor             outa, tempsA
+        add             iterL, #1
+        cmp             iterL, #24  wz   
+        if_z            jmp  #DataIn
+        jmp             #Addrs
+        
+DataIn  mov             datS, datIn
+        or              outa, sck
+        and             datS, ina
+        xor             outa, sck
+        or              datC, datS
+        sar             datC, #1
+        add             iterL, #1
+        cmp             iterL, #32  wz
+        if_z            jmp  #Concl
+        jmp             #DataIn
+
+Concl   sar             datC, #12
+        rev             datC, #24 
+        wrlong          datC, par
+        jmp             #Memory
+        
+tests   long  $0F
+mover   long  $8000
+adrss   long  $0080
+cont    long  $4C0000
+cs      long  $400000
+adr     long  $40000
+sck     long  $80000
+datIn   long  $100000
+delayX  long  250
+
+timeX   res 1
+datC    res 1
+datS    res 1
+adTemp  res 1
+tempsA  res 1
+iterL   res 1  
+
+''''''''''''\/Shift Out Program\/'''''''''''''''''
+        org 0
+        
+Shift   mov             dira, numberA
+        rdlong          save, par     'injector input value
+        mov             iterA, #0
+        
+Loop    mov             mask, #$1
+        and             mask, save
+        shl             mask, #25
+        xor             outa, mask
+        xor             outa, numberB               'clock high
+        nop
+        xor             outa, numberB               'clock low
+        and             outa, #$0
+        sar             save, #1
+        add             iterA, #1
+        cmp             iterA, #8  wz
+        if_z            jmp #Latch
+        jmp             #Loop
+        
+Latch   xor             outa, numberC               'latch high
+        nop
+        xor             outa, numberC               'latch low
+        add             iterC, #1
+        jmp             #Shift
+
+injectorOut   long  $22
+numberA       long  $E000000
+numberB       long  $8000000
+numberC       long  $4000000
+iterC         long  0
+       
+iterA         res 1
+save          res 1
+mask          res 1
